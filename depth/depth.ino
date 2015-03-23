@@ -1,14 +1,24 @@
-long pulseCount = 0;  //a pulse counter variable
+#include <SerialCommand.h>
 
-unsigned long pulseTime,lastTime, duration, totalDuration;
+#define arduinoLED 13       // Arduino LED on board
+SerialCommand sCmd(Serial); // The SerialCommand object, initialize with any Stream object
+
 
 int samplingPeriod=1; // the number of seconds to measure 555 oscillations
 
-int avenum=1; // number of samples to average
+// number of samples to average
+#define DEFAULT_AVENUM 1
+#define DEFAULT_SAMPLE_DURATION_MILLIS 1000
 //int fivefivefive = 13; // the pin that powers the 555 subcircuit
 
 void setup()
 {
+  // Setup callbacks for SerialCommand commands
+  sCmd.addCommand("ON",          command_LED_on);          // Turns LED on
+  sCmd.addCommand("OFF",         command_LED_off);         // Turns LED off
+  sCmd.addCommand("MEAS_PULSE",  command_MEAS_PULSE);     // Measure average pulse period
+  sCmd.setDefaultHandler(command_unrecognized);      // Handler for command that isn't matched  (says "What?")
+  //startup comm
   Serial.begin(9600);
   
      // pinMode(fivefivefive, OUTPUT);   
@@ -17,63 +27,31 @@ void setup()
 
 void loop()
 {
-  //delay(1000); // imagine riffle is doing other stuff (like sleeping)
-  
-  // now make a conductivity measurement
-  
   //turn on the 555 system
   //digitalWrite(fivefivefive,HIGH); //turns on the 555 timer subcircuit
-  float pulseAve=0.;
-  int pulseStats=0;
-  
-  for (int i=0;i<avenum;i++) {
-    
-  //delay(1000);
-  
-  pulseCount=0; //reset the pulse counter
-  totalDuration=0;  //reset the totalDuration of all pulses measured
-  
-  attachInterrupt(0,onPulse,RISING); //attach an interrupt counter to interrupt pin 0 (digital pin #2) -- the only other possible pin on the 328p is interrupt pin #1 (digital pin #3)
-  
-  pulseTime=micros(); // start the stopwatch
-  
-  delay(samplingPeriod*1000); //give ourselves samplingPeriod seconds to make this measurement, during which the "onPulse" function will count up all the pulses, and sum the total time they took as 'totalDuration' 
- 
-  detachInterrupt(1); //we've finished sampling, so detach the interrupt function -- don't count any more pulses
-  
-  //turn off the 555 system
-  //digitalWrite(fivefivefive,LOW);
-  
-  if (pulseCount>0) { //use this logic in case something went wrong
-  
-  double durationS=totalDuration/double(pulseCount)/1000000.; //the total duration, in seconds, per pulse (note that totalDuration was in microseconds)
-  pulseAve+=pulseCount;
-  pulseStats++;
-  
+  sCmd.readSerial();     // We don't do much, just process serial commands
 }
-  } 
-  
-  if (pulseAve>0) {
-    pulseAve=pulseAve/pulseStats;
+//------------------------------------------------------------------------------
+// pulse measurement utilities
+volatile long pulseCount = 0;  //a pulse counter variable
+volatile unsigned long pulseTime,lastTime, duration, totalDuration;
 
-int pulseAveInt = (int) pulseAve;
+float pulseAve=0.;
+int pulseStats=0;
 
-  Serial.println(pulseAveInt);
-  Serial.println("x");
-  // print out stats
-  //Serial.print("sampling period=");
-  //Serial.print(samplingPeriod);
-    //Serial.print(" sec; #pulses=");
-  //Serial.print(pulseCount);
- // Serial.print("; duration per pulse (sec)=");
- // Serial.println(durationS,8);
-  }
-  
-  
-  }
-  
 
-void onPulse()
+float measureAveragePeriod(unsigned int sampleDuration_millis){
+  pulseCount=0;     //reset the pulse counter
+  totalDuration=0;  //reset the totalDuration of all pulses measured
+  pulseTime=micros(); // start the stopwatch
+  attachInterrupt(0,irq_onPulse,RISING); //attach an interrupt counter to interrupt pin 0 (digital pin #2) -- the only other possible pin on the 328p is interrupt pin #1 (digital pin #3)
+  //FIXME do NOT use delayMicroseconds, gives weird readings
+  delay(sampleDuration_millis); //give ourselves samplingPeriod seconds to make this measurement, during which the "onPulse" function will count up all the pulses, and sum the total time they took as 'totalDuration' 
+  detachInterrupt(0); //we've finished sampling, so detach the interrupt function -- don't count any more pulses
+  return (totalDuration)/pulseCount;  //returns value as microseconds
+}
+
+void irq_onPulse()
 {
   pulseCount++;
   //Serial.print("pulsecount=");
@@ -83,4 +61,34 @@ void onPulse()
   duration=pulseTime-lastTime;
   totalDuration+=duration;
   //Serial.println(totalDuration);
+}
+//------------------------------------------------------------------------------
+// serial command handlers
+void command_LED_on(SerialCommand this_scmd) {
+  this_scmd.println("LED on");
+  digitalWrite(arduinoLED, HIGH);
+}
+
+void command_LED_off(SerialCommand this_scmd) {
+  this_scmd.println("LED off");
+  digitalWrite(arduinoLED, LOW);
+}
+
+void command_MEAS_PULSE(SerialCommand this_scmd) {
+  float period; 
+  int sampleDuration_millis = DEFAULT_SAMPLE_DURATION_MILLIS;
+  char *arg = this_scmd.next();
+  if (arg != NULL) {
+    sampleDuration_millis = atoi(arg);
+  }
+  period = measureAveragePeriod(sampleDuration_millis);
+  //send back result
+  this_scmd.println(period);
+}
+
+// This gets set as the default handler, and gets called when no other command matches.
+void command_unrecognized(const char *command, SerialCommand this_scmd) {
+  this_scmd.print("***ERROR *** Did not recognize \"");
+  this_scmd.print(command);
+  this_scmd.println("\" as a command.");
 }
