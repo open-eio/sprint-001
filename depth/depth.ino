@@ -16,8 +16,9 @@ void setup()
   // Setup callbacks for SerialCommand commands
   sCmd.addCommand("ON",          command_LED_on);          // Turns LED on
   sCmd.addCommand("OFF",         command_LED_off);         // Turns LED off
-  sCmd.addCommand("MEAS_PULSE",  command_MEAS_PULSE);     // Measure average pulse period
-  sCmd.setDefaultHandler(command_unrecognized);      // Handler for command that isn't matched  (says "What?")
+  //sCmd.addCommand("MEAS_PULSE_MICROS",  command_MEAS_PULSE_MICROS);     // Measure average pulse period
+  sCmd.addCommand("MEAS_PULSE_MICROS",  dummy_MEAS_PULSE_MICROS);     // Measure average pulse period
+  sCmd.setDefaultHandler(command_unrecognized);           // Handler for command that isn't matched  (says "What?")
   //startup comm
   Serial.begin(9600);
   
@@ -74,14 +75,29 @@ void command_LED_off(SerialCommand this_scmd) {
   digitalWrite(arduinoLED, LOW);
 }
 
-void command_MEAS_PULSE(SerialCommand this_scmd) {
-  float period; 
+void command_MEAS_PULSE_MICROS(SerialCommand this_scmd) {
+  int period; 
   int sampleDuration_millis = DEFAULT_SAMPLE_DURATION_MILLIS;
   char *arg = this_scmd.next();
   if (arg != NULL) {
     sampleDuration_millis = atoi(arg);
   }
   period = measureAveragePeriod(sampleDuration_millis);
+  //send back result
+  this_scmd.println(period);
+}
+
+void dummy_MEAS_PULSE_MICROS(SerialCommand this_scmd) {
+  int period;
+  int sampleDuration_millis = DEFAULT_SAMPLE_DURATION_MILLIS;
+  char *arg = this_scmd.next();
+  if (arg != NULL) {
+    sampleDuration_millis = atoi(arg);
+  }
+  //simulate delay of period measurement
+  delay(sampleDuration_millis);
+  //period = measureAveragePeriod(sampleDuration_millis);
+  period = 90 + random(0,20);
   //send back result
   this_scmd.println(period);
 }
