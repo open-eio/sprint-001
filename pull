@@ -1,6 +1,9 @@
 #!/usr/bin/env python
-
 import argparse
+import serial
+
+DEFAULT_BAUDRATE = 9600
+
 parser = argparse.ArgumentParser()
 
 parser.add_argument("-p","--path", required=True, help="path to the sensor")
@@ -8,11 +11,18 @@ parser.add_argument("-v", "--verbose", action="store_true", help="increase outpu
 
 args = parser.parse_args()
 
-# generate a dummy sensor value. in general, this would come from polling a sensor via args.path
+try:
+    # open serial port
+    ser = serial.Serial(args.path, baudrate=DEFAULT_BAUDRATE)
+    ser.flushInput()
+    # send command and retrieve response
+    ser.write("MEAS_PULSE_MICROS\n")
+    resp = ser.readline().strip()
+    sensor_val = int(resp)
 
-sensorValue=18.6
-
-if args.verbose:
-    print "sensor value via path {}: {}".format(args.path, sensorValue)
-else:
-    print sensorValue
+    if args.verbose:
+        print "sensor value via path {}: {}".format(args.path, sensor_val)
+    else:
+        print sensor_val
+finally:
+    ser.close()
